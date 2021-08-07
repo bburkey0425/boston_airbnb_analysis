@@ -2,6 +2,7 @@
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(tidyverse)
 
 # reading boston airbnb csv files
 df_cal = read.csv('calendar.csv')
@@ -23,21 +24,36 @@ dim(df_rev)
 dim(df_list)
 
 # cleaning of df_cal
-# thinking I'm not going to need this dataset at all
+# df_cal is useful as we would be able to see the pricing increases/decreases vs. time
 names(df_cal)
-length(df_cal$listing_id)
-length(unique(df_cal$listing_id))
+length(df_cal$listing_id) # number of pricing entries for all the different listings
+length(unique(df_cal$listing_id)) # matches number of listings included in listings dataframe
 
-df_cal %>% select(price) %>% summarise(length(price == ''))
+# Convert date column to datetime object
+df_cal = df_cal %>% mutate(date = as.Date(date))
+df_cal = df_cal %>% mutate(date = format(date, '%m/%d/%Y'))
+
+# Clean price column and convert to numeric
+
+class(df_cal$price)
+
+work = df_cal %>% mutate(price = gsub('$', '', price))
+work$price
+
+num = '$65.00'
+sub('$', 'r', num)
 
 # cleaning of df_rev
 # don't think i'll be doing a lot with this either...
 names(df_rev)
 
 # cleaning of df_list
+# selecting relevant columns
 names(df_list)
-df_list = df_list %>% select(id, host_id, host_since, host_response_time,
-                   host_response_rate, host_acceptance_rate, host_is_superhost,
+
+df_list$room_type
+
+df_list = df_list %>% select(id, host_is_superhost,
                    host_listings_count, street, neighbourhood, neighbourhood_cleansed, 
                    city, zipcode, smart_location, latitude, longitude, is_location_exact, 
                    property_type, room_type, accommodates, bathrooms, bedrooms, beds,
@@ -48,4 +64,12 @@ df_list = df_list %>% select(id, host_id, host_since, host_response_time,
                    review_scores_location, review_scores_value, instant_bookable, cancellation_policy, 
                    reviews_per_month)
 
-names(df_list)
+# getting rid of weird brittish spelling
+df_list = df_list %>% rename('neighborhood' = neighbourhood)
+df_list = df_list %>% rename('neighborhood_cleansed' = neighbourhood_cleansed)
+
+df_list$amenities
+
+unique(df_cal$price)
+
+
