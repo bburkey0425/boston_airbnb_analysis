@@ -5,59 +5,18 @@ library(tidyr)
 library(tidyverse)
 library(plotly)
 library(scales)
+library(ggmap)
+library(RColorBrewer)
+library(leaflet)
+library(leaflet.extras)
 
 # reading boston airbnb csv files
 df_cal = read.csv('calendar.csv')
 df_rev = read.csv('reviews.csv')
 df_list = read.csv('listings.csv')
 
-# creating original copies of datasets
+# creating original copy of df_cal
 copy_cal = df_cal
-copy_rev = df_rev
-copy_list = df_list
-
-# Alex attempt
-# Step 1 - clean price
-copy_cal$price = as.numeric(gsub('\\$', '', copy_cal$price))
-
-# Step 2 - nest data
-copy_cal_nested = copy_cal %>% nest_by(listing_id)
-
-# Step 3 - define function to fill price values with values above / below(if first is NA)
-impute_price = function(df){
-  df = df[order(df$date), ]
-  df = df %>% fill(price, .direction = 'downup')
-  return(df)
-}
-
-# Step 4 - apply function to each dataframe
-copy_cal_nested[[2]] = lapply(copy_cal_nested[[2]], impute_price)
-copy_cal_nested
-
-# Step 5 - unnest
-final_df = unnest(copy_cal_nested, cols = c(data))
-
-# Step 6 - remove NA values (listings which never had any prices listed - booked the whole year)
-# number of NAs in final_df (all occurring in price column fortunately) - 250755
-sum(is.na(final_df$price))
-sum(is.na(final_df))
-
-# omit NA 
-final_df = na.omit(final_df)
-sum(is.na(final_df)) # 0 NAs left
-dim(final_df) # 250755 rows omitted - 1058135 left
-
-# Step 7 - find mean price of all listings per day and plot over the course of the year
-agg = final_df %>% group_by(date) %>% summarise(mean_price = mean(price))
-agg$date = as.Date(agg$date)
-
-# Step 8 - plot of mean prices per day (prices adjusted)
-ggplot() + geom_line(data = agg, aes(x = date, y = mean_price, lty = 'All\nListings')) +
-  scale_linetype('') +
-  labs(title = 'Mean Listing Prices per Day (Prices Adjusted)',
-       y = 'Mean Price',
-       x = 'Date',
-       subtitle = 'Prices of ALL listings between September 2016 and September 2017')
 
 # information RE separate datasets
 summary(df_cal)
@@ -82,7 +41,6 @@ class(df_cal$date)
 df_cal$price = gsub('\\$', '', df_cal$price)
 df_cal$price = as.numeric(df_cal$price)
 df_cal = df_cal %>% filter(price != is.na(price))
-
 
 # plot of mean listing price per day for the year
 by_day = df_cal %>% group_by(date) %>% summarise(mean_price = mean(price))
@@ -132,15 +90,23 @@ dim(final_df) # 250755 rows omitted - 1058135 left
 # Step 7 - find mean price of all listings per day and plot over the course of the year
 agg = final_df %>% group_by(date) %>% summarise(mean_price = mean(price))
 agg$date = as.Date(agg$date)
+agg
 
 # Step 8 - plot of mean prices per day (prices adjusted)
-ggplot() + geom_line(data = agg, aes(x = date, y = mean_price), color = 'steelblue3') +
+avail = ggplot() + geom_line(data = agg, aes(x = date, y = mean_price), color = 'steelblue3') +
   scale_x_date(date_breaks = "months", date_labels = "%b-%y") +
   theme(axis.text.x = element_text(angle = 45)) +
+  geom_hline(yintercept = mean(agg$mean_price), color="black", linetype = 'dashed') +
   labs(title = 'Mean Listing Prices per Day',
        y = 'Mean Price',
        x = 'Date',
        subtitle = '(September 2016 - August 2017)')
+
+avail
+
+# plotly
+fig_1 = ggplotly(avail)
+fig_1
 
 # combining both available and all listings
 # plot of mean prices of available listings vs. prices of all listings
@@ -159,9 +125,9 @@ avail_all = ggplot() +
 
 avail_all
 
-fig = ggplotly(avail_all)
-
-fig
+# plotly interactive plot
+fig_2 = ggplotly(avail_all)
+fig_2
 
 # cleaning of df_rev
 # don't think i'll be doing a lot with reviews dataframe
@@ -172,59 +138,193 @@ names(df_rev)
 df_list = df_list %>% rename('neighborhood' = neighbourhood)
 df_list = df_list %>% rename('neighborhood_cleansed' = neighbourhood_cleansed)
 
-# selecting relevant columns to be included
-df_list = df_list %>% select(id, street, neighborhood, neighborhood_cleansed, zipcode, latitude, 
-                                 longitude, is_location_exact, property_type, room_type, 
-                                 accommodates, bathrooms, bedrooms, beds, amenities, square_feet, 
-                                 price, guests_included, extra_people)
-
 # cleaning price column (what is the best way to handle missing values?)
-unique(df_list$price)
+unique(df_list_v1$price)
 
 # getting rid of '$' sign
 df_list$price = gsub('\\$', '', df_list$price)
-# getting rid of ',' for prices greater than 1000
+# getting rid of ',' in prices greater than 1000
 df_list$price = gsub(',', '', df_list$price)
 # converting to numeric
 df_list$price = as.numeric(df_list$price)
 # understanding distribution of price
 summary(df_list$price)
 
-# histogram and density plots of price
-ggplot(df_list, aes(x=price)) + geom_histogram()
-ggplot(df_list, aes(x=price)) + geom_density()
+# selecting relevant columns to be included
+df_list_v1 = df_list %>% select(id, street, neighborhood, neighborhood_cleansed, zipcode, latitude, 
+                                 longitude, is_location_exact, property_type, room_type, 
+                                 accommodates, bathrooms, bedrooms, beds, amenities, square_feet, 
+                                 price, guests_included, extra_people)
+
+# cleaning price column (what is the best way to handle missing values?)
+unique(df_list_v1$price)
+
+# histogram plot of price (including outliers)
+price_out = ggplot(df_list_v1, aes(x=price)) + 
+  geom_histogram(binwidth = 50, color = 'black', fill = 'cornsilk') +
+  geom_vline(aes(xintercept = 600), color="black", lty='dashed') +
+  labs(title = 'Distribution of Listing Prices',
+       subtitle = '(Outliers Included)',
+       x = 'Price',
+       y = 'Count')
+
+price_out
+
+# plotly
+fig_3 = ggplotly(price_out)
+fig_3
 
 # finding which are outliers by definition (>425)
-outvals = boxplot(df_list$price)$out
+outvals = boxplot(df_list_v1$price)$out
 min(outvals)
 
 # Filtering prices to exclude the outliers (going with 600 as the cutoff for round number)
-df_list = df_list %>% filter(price<=600)
+df_list_red = df_list_v1 %>% filter(price<=600)
 
-# distribution of prices
-ggplot(df_list, aes(x=price)) + 
+# distribution of prices ($600 and less)
+price_no_out = ggplot(df_list_red, aes(x=price)) + 
   geom_histogram(aes(y = ..density..), color = 'black', fill = 'white', binwidth = 20) + 
   geom_density(alpha = 0.2, fill = 'red') +
   labs(title = 'Distribution of Listing Prices',
+       subtitle = '(Outliers Excluded)',
        x = 'Price',
        y = 'Density')
 
+price_no_out
+
+# plotly
+fig_4 = ggplotly(price_no_out)
+fig_4
+
 # getting rid of observations without neighborhood included
-df_list_reduced = df_list %>% filter(neighborhood != '')
+df_list_red2 = df_list_v1 %>% filter(neighborhood_cleansed != '')
 
 # creating data frame with mean neighborhood prices with total count of observations per neighborhood
-neigh_price = df_list_reduced %>% group_by(neighborhood) %>% summarise(price = mean(price), count = n())
-neigh_price_ord = neigh_price %>% arrange(desc(price))
-neigh_price_ord
+neigh_price = df_list_red2 %>% group_by(neighborhood_cleansed) %>% summarise(price = mean(price), count = n())
+neigh_price = neigh_price %>% arrange(desc(price))
+neigh_price
+
+# count of listings per neighborhood
+neigh_count_plot = ggplot(neigh_price) + 
+  geom_bar(aes(x=reorder(neighborhood_cleansed, -count), y=count), color = 'navyblue', fill = 'lightsteelblue1', stat='identity') + 
+  geom_hline(aes(yintercept = 50), color="black", linetype = 'dashed') +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = 'Number of Listings per Neighborhood',
+       subtitle = '(Cutoff: >= 50 listings)',
+       x = 'Neighborhood',
+       y = 'Count')
+
+neigh_count_plot
+
+# plotly
+fig_5 = ggplotly(neigh_count_plot)
+fig_5
 
 # plotting mean of price per neighborhood including color scale for count of each neighborhood
-ggplot(neigh_price_ord, aes(y=reorder(neighborhood, price), x=price, fill = count)) + 
+# excluding neighborhoods with less than 50 listings
+neigh_count = neigh_price %>% filter(count>=50) %>% arrange(desc(count))
+
+neigh_price_plot = ggplot(neigh_count, aes(y=reorder(neighborhood_cleansed, price), x=price, fill = count)) + 
   scale_fill_continuous(type = "viridis") +
   geom_bar(stat='identity') +
+  geom_text(aes(label = round(price, 2)), size = 3.5, color = 'white', nudge_x=-25) +
   labs(title = 'Mean Listing Price per Neighborhood',
+       subtitle = '(At least 50 listings in each neighborhood)',
        x = 'Price',
        y = 'Neighborhood')
 
+neigh_price_plot
 
+# plotly
+fig_6 = ggplotly(neigh_price_plot)
+fig_6
 
-  
+# Attempt at making superimposed heatmaps on maps
+names(df_list)
+
+df_list_loc = df_list %>% select(id, neighborhood_cleansed, price, latitude, longitude, 
+                                 number_of_reviews, reviews_per_month, first_review, 
+                                 last_review)
+
+# cleaning columns of df_list_loc
+# NA values in reviews_month column where listing has a total of 0 reviews (756 listings)
+sum(is.na(df_list_loc$reviews_per_month))
+class(df_list_loc$reviews_per_month)
+unique(df_list_loc$reviews_per_month)
+
+# first review and last review are '' wherever number_of_reviews = 0 and...
+# reviews_per_month = NA
+df_list_loc %>% filter(first_review == '') %>% 
+  select(first_review, last_review, number_of_reviews, reviews_per_month)
+
+# using reviews_per_month as primary popularity metric (accounts for time)
+# imputing 0 for all NA values in reviews_per_month
+df_list_loc[is.na(df_list_loc)] = 0
+sum(is.na(df_list_loc))  # 0 - good to go
+unique(df_list_loc$reviews_per_month)
+
+# removing first_review and last_review
+df_list_loc = df_list_loc %>% select(id, neighborhood_cleansed, price, latitude, longitude, 
+                                 number_of_reviews, reviews_per_month)
+
+# removing outlier price observations
+df_list_loc = df_list_loc %>% filter(price<=600)
+
+# finding max and min lat/long coordinates to set bound for map
+max(df_list_loc$longitude)
+min(df_list_loc$longitude)
+
+max(df_list_loc$latitude)
+min(df_list_loc$latitude)
+
+# Stamen = map for data to be plotted on
+bbox = c(left = -71.20000, bottom = 42.27000, right = -70.90000, top = 42.40000)
+
+base_map = ggmap(get_stamenmap(bbox, maptype = "terrain", zoom = 15), extent='device')
+base_map
+
+coords_map_num = base_map + 
+  stat_density2d(data=df_list_loc, 
+                 aes(x=longitude, y=latitude, fill = ..level.., alpha = 0.1), 
+                 geom = 'polygon')
+
+coords_map_num = coords_map_num + scale_fill_gradientn(colors=rev(brewer.pal(7, "Spectral")))
+
+coords_map_num
+
+# interactive heatmaps using leaflet
+# heatmap - number of listings 
+heat_count = df_list_loc %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Voyager) %>%
+  addHeatmap(lng=~longitude, lat=~latitude, radius = 4, blur=3, max = 5)
+
+heat_count
+
+# heatmap - price of listings 
+heat_price = df_list_loc %>% 
+  leaflet() %>%
+  setView(lng = -71.0589, lat = 42.3601, zoom = 12) %>%
+  addProviderTiles(providers$CartoDB.Voyager) %>%
+  addHeatmap(lng = ~longitude, lat = ~latitude, intensity = ~price, 
+             max=600, radius = 4, blur=6)
+
+heat_price
+
+# heatmap - numbers of reviews for each listing
+heat_review_month = df_list_loc %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Voyager) %>%
+  addHeatmap(lng=~longitude, lat=~latitude, 
+             intensity=~reviews_per_month, max = 10, minOpacity = 0, radius = 5, blur=4)
+
+heat_review_month
+
+min(df_list_loc$price)
+max(df_list_loc$price)
+
+max(df_list_loc$reviews_per_month)
+min(df_list_loc$reviews_per_month)
+
+# combining coordinates into one column
+df_list_loc = df_list_loc %>% mutate(coord = paste(latitude, longitude, sep = ', ')) 
