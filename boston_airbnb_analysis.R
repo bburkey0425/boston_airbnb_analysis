@@ -9,6 +9,7 @@ library(ggmap)
 library(RColorBrewer)
 library(leaflet)
 library(leaflet.extras)
+library(shiny)
 
 # reading boston airbnb csv files
 df_cal = read.csv('calendar.csv')
@@ -17,6 +18,7 @@ df_list = read.csv('listings.csv')
 
 # creating original copy of df_cal
 copy_cal = df_cal
+copy_list = df_list
 
 # information RE separate datasets
 summary(df_cal)
@@ -139,7 +141,6 @@ df_list = df_list %>% rename('neighborhood' = neighbourhood)
 df_list = df_list %>% rename('neighborhood_cleansed' = neighbourhood_cleansed)
 
 # cleaning price column (what is the best way to handle missing values?)
-unique(df_list_v1$price)
 
 # getting rid of '$' sign
 df_list$price = gsub('\\$', '', df_list$price)
@@ -197,17 +198,17 @@ fig_4 = ggplotly(price_no_out)
 fig_4
 
 # getting rid of observations without neighborhood included
-df_list_red2 = df_list_v1 %>% filter(neighborhood_cleansed != '')
+df_list_red = df_list_red %>% filter(neighborhood_cleansed != '')
 
 # creating data frame with mean neighborhood prices with total count of observations per neighborhood
-neigh_price = df_list_red2 %>% group_by(neighborhood_cleansed) %>% summarise(price = mean(price), count = n())
+neigh_price = df_list_red %>% group_by(neighborhood_cleansed) %>% summarise(price = mean(price), count = n())
 neigh_price = neigh_price %>% arrange(desc(price))
 neigh_price
 
 # count of listings per neighborhood
 neigh_count_plot = ggplot(neigh_price) + 
   geom_bar(aes(x=reorder(neighborhood_cleansed, -count), y=count), color = 'navyblue', fill = 'lightsteelblue1', stat='identity') + 
-  geom_hline(aes(yintercept = 50), color="black", linetype = 'dashed') +
+  geom_hline(aes(yintercept = 30), color="black", linetype = 'dashed') +
   theme(axis.text.x = element_text(angle = 90)) +
   labs(title = 'Number of Listings per Neighborhood',
        subtitle = '(Cutoff: >= 50 listings)',
@@ -221,13 +222,13 @@ fig_5 = ggplotly(neigh_count_plot)
 fig_5
 
 # plotting mean of price per neighborhood including color scale for count of each neighborhood
-# excluding neighborhoods with less than 50 listings
-neigh_count = neigh_price %>% filter(count>=50) %>% arrange(desc(count))
+# neigh_count --> excluding neighborhoods with less than 30 listings (to exclude in box plot)
+neigh_price %>% filter(count<30) %>% arrange(desc(count)) %>% select(neighborhood_cleansed)
 
-neigh_price_plot = ggplot(neigh_count, aes(y=reorder(neighborhood_cleansed, price), x=price, fill = count)) + 
+neigh_price_plot = ggplot(neigh_price, aes(y=reorder(neighborhood_cleansed, price), x=price, fill = count)) + 
   scale_fill_continuous(type = "viridis") +
   geom_bar(stat='identity') +
-  geom_text(aes(label = round(price, 2)), size = 3.5, color = 'white', nudge_x=-25) +
+  geom_text(aes(label = round(price, 2)), size = 3, color = 'white', nudge_x=-25) +
   labs(title = 'Mean Listing Price per Neighborhood',
        subtitle = '(At least 50 listings in each neighborhood)',
        x = 'Price',
@@ -238,6 +239,65 @@ neigh_price_plot
 # plotly
 fig_6 = ggplotly(neigh_price_plot)
 fig_6
+
+# box plot of middle tendencies of pricing per neighborhood
+df_list_box_exp = df_list_red %>% 
+  select(price, neighborhood_cleansed) %>% 
+  filter(neighborhood_cleansed %in% c('South Boston Waterfront', 'Downtown', 'Chinatown', 'Back Bay', 'West End'))
+
+df_list_box_chp = df_list_red %>% 
+  select(price, neighborhood_cleansed) %>% 
+  filter(neighborhood_cleansed %in% c('Hyde Park', 'Dorchester', 'Roslindale', 'West Roxbury', 'Allston'))
+
+# most expensive ggplot2 box plot
+neigh_price_box_exp = 
+  ggplot(df_list_box_exp, aes(x=reorder(neighborhood_cleansed, -price), y=price)) +
+  geom_boxplot() +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), width = 0.75, linetype = "dashed") +
+  theme(legend.position = 'none') +
+  labs(title = 'Price per Neighborhood - Most Expensive',
+  subtitle = '(At least 30 listings in each neighborhood)',
+  x = 'Neighborhood',
+  y = 'Price')
+
+neigh_price_box_exp
+
+# least expensive ggplot2 box plot
+neigh_price_box_chp = ggplot(df_list_box_chp, aes(x=reorder(neighborhood_cleansed, -price), y=price)) +
+  geom_boxplot() +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), width = 0.75, linetype = "dashed") +
+  theme(legend.position = 'none') +
+  labs(title = 'Price per Neighborhood - Least Expensive',
+       subtitle = '(At least 30 listings in each neighborhood)',
+       x = 'Neighborhood',
+       y = 'Price')
+
+neigh_price_box_chp
+
+# most expensive plotly box plot
+# creating ordered array for box plot
+most_exp = df_list_box_exp %>% 
+  plot_ly(y = ~price, x = ~reorder(neighborhood_cleansed, -price), color = ~neighborhood_cleansed, 
+          type = 'box', boxmean = TRUE, boxpoints = 'all', jitter = 0.3, 
+          colors = 'Set1', marker = list(size = 4), line = list(color = 'black', width = 1.2)) %>%
+  layout(title = 'Listing Price per Neighborhood - Most Expensive', 
+         xaxis = list(title = 'Neighborhood'),
+         yaxis = list(title = 'Price ($)', range = c(0, 550)),
+         showlegend = FALSE)
+
+most_exp
+
+# least expensive plotly box plot
+least_exp = df_list_box_chp %>% 
+  plot_ly(y = ~price, x = ~reorder(neighborhood_cleansed, -price), color = ~neighborhood_cleansed, 
+          type = 'box', boxmean = TRUE, boxpoints = 'all', jitter = 0.3, 
+          colors = 'Set1', marker = list(size = 4), line = list(color = 'black', width = 1.2)) %>%
+  layout(title = 'Listing Price per Neighborhood - Least Expensive', 
+         xaxis = list(title = 'Neighborhood'),
+         yaxis = list(title = 'Price ($)', range = c(0, 350)),
+         showlegend = FALSE)
+
+least_exp
 
 # Attempt at making superimposed heatmaps on maps
 names(df_list)
@@ -281,7 +341,6 @@ min(df_list_loc$latitude)
 bbox = c(left = -71.20000, bottom = 42.27000, right = -70.90000, top = 42.40000)
 
 base_map = ggmap(get_stamenmap(bbox, maptype = "terrain", zoom = 15), extent='device')
-base_map
 
 coords_map_num = base_map + 
   stat_density2d(data=df_list_loc, 
@@ -297,7 +356,7 @@ coords_map_num
 heat_count = df_list_loc %>% 
   leaflet() %>% 
   addProviderTiles(providers$CartoDB.Voyager) %>%
-  addHeatmap(lng=~longitude, lat=~latitude, radius = 4, blur=3, max = 5)
+  addHeatmap(lng=~longitude, lat=~latitude, radius = 2, blur=3)
 
 heat_count
 
@@ -307,24 +366,62 @@ heat_price = df_list_loc %>%
   setView(lng = -71.0589, lat = 42.3601, zoom = 12) %>%
   addProviderTiles(providers$CartoDB.Voyager) %>%
   addHeatmap(lng = ~longitude, lat = ~latitude, intensity = ~price, 
-             max=600, radius = 4, blur=6)
+             max=600, radius = 3, blur=4)
+
+# for reference when gauging max/min opacity values in heatmap
+min(df_list_loc$price)
+max(df_list_loc$price)
 
 heat_price
 
+# Analysis of popularity through number of reviews
 # heatmap - numbers of reviews for each listing
 heat_review_month = df_list_loc %>% 
   leaflet() %>% 
   addProviderTiles(providers$CartoDB.Voyager) %>%
   addHeatmap(lng=~longitude, lat=~latitude, 
-             intensity=~reviews_per_month, max = 10, minOpacity = 0, radius = 5, blur=4)
+             intensity=~reviews_per_month, max = 15, minOpacity = 0, radius = 5, blur=2)
 
 heat_review_month
 
-min(df_list_loc$price)
-max(df_list_loc$price)
-
+# for reference when gauging max/min opacity values in heatmap
 max(df_list_loc$reviews_per_month)
 min(df_list_loc$reviews_per_month)
 
-# combining coordinates into one column
-df_list_loc = df_list_loc %>% mutate(coord = paste(latitude, longitude, sep = ', ')) 
+# reviews per month per neighborhood barplot
+df_reviews = df_list %>% select(neighborhood_cleansed, reviews_per_month, 
+                                number_of_reviews, review_scores_rating)
+
+dim(df_reviews)
+names(df_reviews)
+
+# cleaning values from reviews_per_month plot - NA values --> 0
+df_reviews$reviews_per_month[is.na(df_reviews$reviews_per_month)] = 0
+class(df_reviews$reviews_per_month)
+
+# finding mean number of monthly ratings per neighborhood
+rev_num_score = df_reviews %>% group_by(neighborhood_cleansed) %>% 
+  summarise(reviews_per_month = sum(reviews_per_month), num_listings = n()) %>% 
+  mutate(month_revs_adj = reviews_per_month/num_listings)
+
+# bar plot of mean monthly reviews per neighborhood
+rev_neigh_plot = ggplot(rev_num_score) + 
+  geom_bar(aes(x = month_revs_adj, y = reorder(neighborhood_cleansed, month_revs_adj)), 
+           color = 'sienna4', fill = 'salmon', stat='identity') +
+  labs(title = 'Average Reviews per Month per Neighborhood',
+       x = 'Neighborhood',
+       y = 'Average Number of Reviews per Month')
+
+rev_neigh_plot
+
+
+ggplot(rev_num_score, aes(x = mean_score, y = review_count), label=neighborhood_cleansed) + 
+  geom_point() +
+  geom_text(aes(label=neighborhood_cleansed),hjust=0, vjust=0)
+
+df_reviews
+
+sum(is.na(df_list$reviews_per_month))
+
+summary(df_reviews$reviews_per_month)
+
