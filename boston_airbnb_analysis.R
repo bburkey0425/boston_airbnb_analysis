@@ -10,6 +10,7 @@ library(RColorBrewer)
 library(leaflet)
 library(leaflet.extras)
 library(shiny)
+library(geosphere)
 
 # reading boston airbnb csv files
 df_cal = read.csv('calendar.csv')
@@ -211,7 +212,7 @@ neigh_count_plot = ggplot(neigh_price) +
   geom_hline(aes(yintercept = 30), color="black", linetype = 'dashed') +
   theme(axis.text.x = element_text(angle = 90)) +
   labs(title = 'Number of Listings per Neighborhood',
-       subtitle = '(Cutoff: >= 50 listings)',
+       subtitle = '(Cutoff: >= 30 listings)',
        x = 'Neighborhood',
        y = 'Count')
 
@@ -221,16 +222,63 @@ neigh_count_plot
 fig_5 = ggplotly(neigh_count_plot)
 fig_5
 
+# calculating 'distance to boston' column for property_type and room_type
+sum(is.na(df_list_v1$property_type))
+sum(is.na(df_list_v1$room_type))
+sum(is.na(df_list_v1$accommodates))
+
+unique(df_list_v1$property_type) # has '' values
+unique(df_list_v1$room_type) # good to go
+unique(df_list_v1$accommodates) # good to go
+class(df_list_v1$longitude) # numeric
+class(df_list_v1$latitude) # numeric
+
+# function to gather distance from center of boston to location of each listing
+df_list_v1 = df_list_v1 %>% rowwise() %>% 
+  mutate(dist_boston = geosphere::distHaversine( c(longitude, latitude), c(-71.059748, 42.360568)))
+
+# convert meters to miles
+df_list_v1 = df_list_v1 %>% mutate(dist_boston = dist_boston/1609.344)
+
+# filter outlier prices (different than before for graphing purposes)
+# remove null property_type values
+df_list_filt = df_list_v1 %>% filter(price<=800)
+df_list_filt = df_list_filt %>% filter(property_type != '')
+
+# plotly of distance vs. price vs. number of guests
+df_list_filt %>% 
+  plot_ly(y = ~price, x = ~dist_boston, type = 'scatter', color = ~accommodates) %>%
+  layout(title = 'Distance to Boston vs. Price vs. Number of Guests', 
+         xaxis = list(title = 'Distance to Boston (miles)'),
+         yaxis = list(title = 'Price ($)'),
+         showlegend = FALSE)
+
+# plotly of distance vs. price vs. property type
+df_list_filt %>% 
+  plot_ly(y = ~price, x = ~dist_boston, type = 'scatter', color = ~property_type) %>%
+  layout(title = 'Distance to Boston vs. Price vs. Property Type', 
+         xaxis = list(title = 'Distance to Boston (miles)'),
+         yaxis = list(title = 'Price ($)'))
+
+# plotly of distance vs. price vs. room type
+df_list_filt %>% 
+  plot_ly(y = ~price, x = ~dist_boston, type = 'scatter', color = ~room_type) %>%
+  layout(title = 'Distance to Boston vs. Price vs. Room Type', 
+         xaxis = list(title = 'Distance to Boston (miles)'),
+         yaxis = list(title = 'Price ($)'))
+
 # plotting mean of price per neighborhood including color scale for count of each neighborhood
 # neigh_count --> excluding neighborhoods with less than 30 listings (to exclude in box plot)
-neigh_price %>% filter(count<30) %>% arrange(desc(count)) %>% select(neighborhood_cleansed)
+neigh_price
+neigh_price_red = neigh_price %>% filter(count>=30) %>% arrange(desc(count)) %>% select(neighborhood_cleansed, price, count)
+neigh_price_red
 
-neigh_price_plot = ggplot(neigh_price, aes(y=reorder(neighborhood_cleansed, price), x=price, fill = count)) + 
+neigh_price_plot = ggplot(neigh_price_red, aes(y=reorder(neighborhood_cleansed, price), x=price, fill = count)) + 
   scale_fill_continuous(type = "viridis") +
   geom_bar(stat='identity') +
   geom_text(aes(label = round(price, 2)), size = 3, color = 'white', nudge_x=-25) +
   labs(title = 'Mean Listing Price per Neighborhood',
-       subtitle = '(At least 50 listings in each neighborhood)',
+       subtitle = '(At least 30 listings in each neighborhood)',
        x = 'Price',
        y = 'Neighborhood')
 
@@ -411,17 +459,4 @@ rev_neigh_plot = ggplot(rev_num_score) +
   labs(title = 'Average Reviews per Month per Neighborhood',
        x = 'Neighborhood',
        y = 'Average Number of Reviews per Month')
-
-rev_neigh_plot
-
-
-ggplot(rev_num_score, aes(x = mean_score, y = review_count), label=neighborhood_cleansed) + 
-  geom_point() +
-  geom_text(aes(label=neighborhood_cleansed),hjust=0, vjust=0)
-
-df_reviews
-
-sum(is.na(df_list$reviews_per_month))
-
-summary(df_reviews$reviews_per_month)
 
