@@ -27,3 +27,7 @@ _Link to dataset on Kaggle: https://www.kaggle.com/airbnb/boston_
 	- Distance from Boston  
 		- _How does the distance from Boston effect price, number of guests allowed, property types, and room types?_  
 
+**Major Insights**  
+- Calendar: Being a notable college/university city, we notice a drastic increase in mean Airbnb listing prices in fall months correlating to leasing cycle of the larger Boston rental market.  
+- Listings: Due to low Airbnb listing prices relative to traditionally expensive neighborhoods, high levels of overall visitor traffic, and a moderate amount of total listings, East Boston presents itself as an opportunistic neighborhood for potential hosts.  
+  
